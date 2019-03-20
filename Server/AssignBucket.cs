@@ -21,7 +21,10 @@ namespace playfab.gdc.leaderboardsdemo
             [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] EntityRequest req,
             ILogger log)        
         {
-            var titleToken = AzureFunctions.ExecuteFunction.GetTitleEntityToken();
+            log.LogInformation("Attempting to get TitleEntityToken");
+            var titleToken = await AzureFunctions.ExecuteFunction.GetTitleEntityToken();
+            var name = req.FunctionParameter.ToString();
+            log.LogInformation($"Connected to PlayFab [{titleToken}]");
 
             
             if ((req.EntityProfile.Statistics != null) && req.EntityProfile.Statistics.ContainsKey("Bucket"))
@@ -29,10 +32,15 @@ namespace playfab.gdc.leaderboardsdemo
                 
                 if (req.EntityProfile.Statistics["Bucket"].Metadata != null)
                 {
-                    return await UpdateBucketMetadata(req);
+                    log.LogInformation($"{name} already had bucket statistic but no assignment");
+                    return await UpdateBucketMetadata(req, log);
                 }
-                else   
+                else
+                {
+                    log.LogInformation($"{name} already had bucket assigned {req.EntityProfile.Statistics["Bucket"].Metadata}");
                     return req.EntityProfile.Statistics["Bucket"].Metadata;
+                }   
+                    
             }
             else {
                 await PlayFabLeaderboardsAPI.UpdateStatisticsAsync( new UpdateStatisticsRequest() {
@@ -40,7 +48,7 @@ namespace playfab.gdc.leaderboardsdemo
                         Id = req.RequestorEntity.Id,
                         Type = req.RequestorEntity.Type
                     },
-                    EntityLeaderboardMetadata = req.FunctionParameter.ToString(),
+                    EntityLeaderboardMetadata = name,
                     Statistics = new System.Collections.Generic.List<StatisticUpdate>() {
                         new StatisticUpdate() {
                             Name = "Bucket",
@@ -49,11 +57,11 @@ namespace playfab.gdc.leaderboardsdemo
                     }
                 });
 
-                return await UpdateBucketMetadata(req);
+                return await UpdateBucketMetadata(req, log);
             }                                
         }
 
-        private static async Task<string> UpdateBucketMetadata(EntityRequest req)
+        private static async Task<string> UpdateBucketMetadata(EntityRequest req, ILogger log)
         {
                 var rankings = await PlayFabLeaderboardsAPI.GetLeaderboardAroundEntityAsync(new GetLeaderboardAroundEntityRequest() {
                     Entity = new PlayFab.LeaderboardsModels.EntityKey() {
@@ -81,6 +89,8 @@ namespace playfab.gdc.leaderboardsdemo
                         }
                     }
                 });
+
+                log.LogInformation($"{req.FunctionParameter.ToString()} assigned bucket {bucket}");
                 return bucket.ToString();
         }
     }

@@ -5,19 +5,20 @@ using UnityEngine.UI;
 using PlayFab;
 using PlayFab.CloudScriptModels;
 using PlayFab.LeaderboardsModels;
+using PlayFab.ProfilesModels;
 
 using System;
 using PlayFab.ClientModels;
+using System.Threading.Tasks;
+using EntityProfileBody = PlayFab.ProfilesModels.EntityProfileBody;
+using TMPro;
 
 public class GameLogic : MonoBehaviour
 {
     // Start is called before the first frame update
     private float timer = 0.0f;
-    
-    [SerializeField]
-    public LeaderboardEntryPrefab prefabEntry;
-    
-    
+
+
     [SerializeField]
     public GameObject leaderboardList;
 
@@ -26,39 +27,55 @@ public class GameLogic : MonoBehaviour
 
 
     [SerializeField]
-    public TMPro.TMP_Dropdown playerSelection;
-
+    public GameObject playerListLocation;
+    public PlayerListEntry prefabPlayerListEntry;
     [SerializeField]
-    public TMPro.TMP_Text playerText;
-    
-    [SerializeField]
-    public TMPro.TMP_Text bucketText;
-
     public GameObject cardLocation;
+    [SerializeField]
     public Card prefabCard;
 
-    private List<Card> cardsInPlay = new List<Card>();    
+    public GameObject GamePanel;
+    public GameObject LeaderboardPanel;
+
+    private List<Card> cardsInPlay = new List<Card>();
     private Card selectedCard;
 
     private string currentPlayer;
+    private string currentBucket;
+    private EntityTokenResponse currentEntityToken;
     private string bucket;
 
     const int maxCards = 9;
 
+    private bool gameRunning = false;
+
     void Start()
     {
         PlayFabSettings.TitleId = "52B0";
-        //RefreshPlayerList();  
+        PlayFabAuthService.OnLoginSuccess += InitialLogin;
+        PlayFabAuthService.Instance.Authenticate();
+        ReloadLeaderboardData();
+    }
+
+    private void InitialLogin(LoginResult success)
+    {
+        SetStatus("Loading players...");
+        RefreshPlayerList();
+        
+
     }
 
     private void SetupBoard()
     {
+        GamePanel.transform.Find("Status").GetComponent<TextMeshProUGUI>().text = "";
         // clear existing board
-        foreach (Card c in cardsInPlay) {
-            UnityEngine.Object.Destroy(c);
+        foreach (Card c in cardsInPlay)
+        {
+            c.transform.parent = null;
+            UnityEngine.Object.DestroyImmediate(c);
         }
+        cardsInPlay.Clear();
 
-        
         int duplicateCard = UnityEngine.Random.Range(0, images.Count);
 
         int randomLocation1 = UnityEngine.Random.Range(0, maxCards);
@@ -66,39 +83,46 @@ public class GameLogic : MonoBehaviour
 
         if (randomLocation2 == randomLocation1)
         {
-            randomLocation2 = (randomLocation2 +1) % maxCards;
-        }    
+            randomLocation2 = (randomLocation2 + 1) % maxCards;
+        }
 
-        for (int i=0; i<maxCards; i++)
+        for (int i = 0; i < maxCards; i++)
         {
             int card;
             if (i == randomLocation1 || i == randomLocation2)
                 card = duplicateCard;
-            else {
-                card = getAvailableCard(duplicateCard, cardsInPlay);                                
+            else
+            {
+                card = getAvailableCard(duplicateCard, cardsInPlay);
             }
 
             Card c = Instantiate(prefabCard, cardLocation.transform);
             c.Id = card;
             c.cardImage = images[card];
             c.onClick += OnCardClicked;
+            cardsInPlay.Add(c);
         }
+        timer = 0f;
+        gameRunning = true;
     }
-
+    
     private void OnCardClicked(object sender, EventArgs e)
     {
-        Card clicked = (Card) sender;
-        if (selectedCard == null) {
+        Card clicked = (Card)sender;
+        if (selectedCard == null)
+        {
             selectedCard = clicked;
         }
-        else {
-            if (selectedCard.Id == clicked.Id)
+        else
+        {
+            if (selectedCard.Id == clicked.Id && clicked.isSelected)
             {
                 MatchMade(selectedCard.Id);
             }
-            else {
+            else
+            {
                 clicked.isSelected = false;
-                selectedCard.isSelected =false;
+                selectedCard.isSelected = false;
                 selectedCard = null;
             }
         }
@@ -108,11 +132,12 @@ public class GameLogic : MonoBehaviour
     {
         int card = -1;
         bool validatedCard = false;
-        
+
         while (!validatedCard)
         {
             card = UnityEngine.Random.Range(0, images.Count);
-            if (card != duplicateCard) {
+            if (card != duplicateCard)
+            {
                 validatedCard = true;
                 for (int i = 0; i < cardsInPlay.Count; i++)
                 {
@@ -121,74 +146,98 @@ public class GameLogic : MonoBehaviour
                 }
             }
         }
-        
+
         return card;
     }
 
-    private void PlayerLoggedIn(LoginResult success)
+
+    private async void OnPlayerLoggedIn(LoginResult success)
     {
-        PlayFabCloudScriptAPI.ExecuteFunction(new ExecuteFunctionRequest()
+
+
+        /* PlayFabCloudScriptAPI.ExecuteFunction(new ExecuteFunctionRequest()
         {
             Entity = new PlayFab.CloudScriptModels.EntityKey()
             {
                 Type = success.EntityToken.Entity.Type,
                 Id = success.EntityToken.Entity.Id
             },
-            FunctionName = "AssignBucket", 
+            FunctionName = "AssignBucket",
             FunctionParameter = playerText.text,
             GeneratePlayStreamEvent = true
         },
-        (result) => {
+        (result) =>
+        {
             bucketText.text = result.FunctionResult.ToString();
             RefreshPlayerList();
             SetupBoard();
-            ReloadLeaderboardData();    
+            ReloadLeaderboardData();
         }
-        ,PlayFabErrorHandler
-        ); 
-        
-        
+        , PlayFabErrorHandler
+        ); */
+
+        currentEntityToken = success.EntityToken;
+        gameRunning = false;
+        if (success.NewlyCreated)
+        {
+            await SetDisplayName(currentPlayer);
+            currentBucket = await AssignBucket(currentEntityToken, currentPlayer);
+            AddPlayerToList(currentPlayer, currentBucket);
+            
+        }
+        HighlightCurrentPlayer();
+        SetupBoard();
+        ReloadLeaderboardData();
+    }
+
+    private void HighlightCurrentPlayer()
+    {
+        var players = playerListLocation.GetComponentsInChildren<PlayerListEntry>();
+        foreach (PlayerListEntry entry in players)
+        {
+            entry.IsSelected = (entry.Name == currentPlayer);
+        }
     }
 
     // Update is called once per frame
     void Update()
     {
-        timer += Time.deltaTime;
+        if (gameRunning)
+            timer += Time.deltaTime;
+        GamePanel.transform.Find("Time").GetComponent<TextMeshProUGUI>().text = timer.ToString("0.0") + "s";
     }
-    
-    
-    public void LoginPlayer() {    
-        
-        if (playerSelection.value == 0) {         
-            return;
-        }
 
+
+
+    public void AddNewPlayer()
+    {
         System.Random rnd = new System.Random();
-        if (playerSelection.value == 1) {         
-            List<string> nameList = new List<string> {"Noah", "Jacob", "Mason", "Liam", "William", "Ethan", "Michael", "Alexander", "James", "Daniel", "Emma", "Sophia", "Olivia", "Isabella", "Ava", "Mia", "Emily", "Abigail", "Madison", "Elizabeth"};
-            playerText.text = nameList[rnd.Next(nameList.Count)] + " " + rnd.Next(100).ToString();
-            bucketText.text = "";
-            PlayFabClientAPI.LoginWithCustomID(new LoginWithCustomIDRequest()
-                {
-                    CustomId = playerText.text,
-                    CreateAccount = true,                                    
-                },
-                PlayerLoggedIn,
-                PlayFabErrorHandler
-            );
-        }
-        else {
-            playerText.text = playerSelection.options[playerSelection.value].text;                    
-            bucketText.text = "";
+        List<string> nameList = new List<string> { "Noah", "Jacob", "Mason", "Liam", "William", "Ethan", "Michael", "Alexander", "James", "Daniel", "Emma", "Sophia", "Olivia", "Isabella", "Ava", "Mia", "Emily", "Abigail", "Madison", "Elizabeth" };
+        currentPlayer = nameList[rnd.Next(nameList.Count)] + " " + rnd.Next(100).ToString();
+        currentBucket = "";
+        PlayFabClientAPI.LoginWithCustomID(new LoginWithCustomIDRequest()
+        {
+            CustomId = currentPlayer,
+            CreateAccount = true,
+        },
+            OnPlayerLoggedIn,
+            PlayFabErrorHandler
+        );
 
-            PlayFabClientAPI.LoginWithCustomID(new LoginWithCustomIDRequest()
-                {
-                    CustomId = playerSelection.options[playerSelection.value].text                    
-                },
-                PlayerLoggedIn,
-                PlayFabErrorHandler
-            );
-        }
+
+    }
+
+    private void PlayerSelected(object sender, EventArgs e)
+    {
+        currentPlayer = ((PlayerListEntry)sender).Name;
+        currentBucket = ((PlayerListEntry)sender).Bucket;
+        PlayFabClientAPI.LoginWithCustomID(new LoginWithCustomIDRequest()
+        {
+            CustomId = currentPlayer
+        },
+            OnPlayerLoggedIn,
+            PlayFabErrorHandler
+        );
     }
 
     private void PlayFabErrorHandler(PlayFabError obj)
@@ -196,57 +245,75 @@ public class GameLogic : MonoBehaviour
         Debug.LogError(obj.GenerateErrorReport());
     }
 
-    public void MatchMade(int matchedCardId)
+    public async void MatchMade(int matchedCardId)
     {
-        PlayFabCloudScriptAPI.ExecuteFunction(new ExecuteFunctionRequest()
+        gameRunning = false;
+        var result = new MatchResult()
         {
-            Entity = new PlayFab.CloudScriptModels.EntityKey()
-            {
-                Type = PlayFabAuthService.Entity.Type,
-                Id = PlayFabAuthService.Entity.Id
-            },
-            FunctionName = "MatchMade",
-            FunctionParameter = new MatchResult()
-            {
-                cardIndex = matchedCardId,
-                matchTime = timer,
-            },
-            GeneratePlayStreamEvent = true
-        },
-        (result) => ReloadLeaderboardData(),
-        (error) => Debug.LogError(error.GenerateErrorReport())
-        );
+            cardIndex = matchedCardId,
+            matchTime = (int)Math.Round(timer * 1000),
+        };
+        SetStatus("Submitting Time...");
+        /*         PlayFabCloudScriptAPI.ExecuteFunction(new ExecuteFunctionRequest()
+                {
+                    Entity = new PlayFab.CloudScriptModels.EntityKey()
+                    {
+                        Type = PlayFabAuthService.Entity.Type,
+                        Id = PlayFabAuthService.Entity.Id
+                    },
+                    FunctionName = "ReportMatchResult",
+                    FunctionParameter = new MatchResult()
+                    {
+                        cardIndex = matchedCardId,
+                        matchTime = (int)Math.Round(timer * 1000),
+                    },
+                    GeneratePlayStreamEvent = true
+                },
+                (result) => ReloadLeaderboardData(),
+                (error) => Debug.LogError(error.GenerateErrorReport())
+                ); */
 
 
-        
 
-        timer = 0f;
+        await ReportMatchResult(result);
+        await Task.Delay(1000);
+        ReloadLeaderboardData();
+        SetupBoard();
+
     }
 
+
+
+
+    private void SetStatus(string message)
+    {
+        GamePanel.transform.Find("Status").GetComponent<TextMeshProUGUI>().text = message;
+    }
     public void RefreshPlayerList()
     {
         PlayFabLeaderboardsAPI.GetLeaderboard(
             new GetEntityLeaderboardRequest()
             {
                 EntityType = "title_player_account",
-                StatisticName = "Bucket",            
+                StatisticName = "Bucket",
                 MaxResults = 100
             },
         (result) =>
         {
-            List<string> players = new List<string>();
-            
-            foreach(EntityLeaderboardEntry ranking in result.Rankings)
+            foreach (Transform playerEntry in playerListLocation.transform)
             {
-                if (ranking.EntityLeaderboardMetadata != null)
-                    players.Add(ranking.EntityLeaderboardMetadata);
+                playerEntry.parent = null;
+                GameObject.DestroyImmediate(playerEntry.gameObject);
             }
 
-            players.Sort();
-            playerSelection.options.Clear();
-            playerSelection.options.Add(new TMPro.TMP_Dropdown.OptionData("Select a player..."));
-            playerSelection.options.Add(new TMPro.TMP_Dropdown.OptionData("Add player..."));
-            players.ForEach((name) => playerSelection.options.Add(new TMPro.TMP_Dropdown.OptionData(name)));            
+            if (result.Rankings != null)
+            {
+                foreach (EntityLeaderboardEntry ranking in result.Rankings)
+                {
+                    AddPlayerToList(ranking.DisplayName, ranking.Metadata);
+                }
+            }
+            SetStatus("");
         },
         (error) =>
         {
@@ -255,34 +322,71 @@ public class GameLogic : MonoBehaviour
          );
     }
 
+    private void AddPlayerToList(string displayName, string bucket)
+    {
+        Debug.Log($"Added {displayName}");
+        PlayerListEntry player = Instantiate(prefabPlayerListEntry, playerListLocation.transform);
+        player.transform.SetAsFirstSibling();
+        player.Name = displayName;
+        player.Bucket = bucket == "" ? "?" : bucket;
+        player.onClick += PlayerSelected;
+        player.IsSelected = player.Name == currentPlayer;
+    }
+
     public void ReloadLeaderboardData()
     {
+
+        for (int i = 1; i <= 5; i++)
+        {
+            LeaderboardListEntry le = leaderboardList.transform.Find($"Entry{i}").GetComponent<LeaderboardListEntry>();
+            le.Player = "";
+            le.Time = "";
+            le.Card.gameObject.SetActive(false);
+            le.Card.allowsSelection = false;
+        }
+
+        if (string.IsNullOrEmpty(currentBucket))
+        {
+            LeaderboardPanel.transform.Find("Header/Title").GetComponent<TextMeshProUGUI>().text = "Leaderboard: Bucket Unknown";
+            return;
+        }
+        else
+        {
+            LeaderboardPanel.transform.Find("Header/Title").GetComponent<TextMeshProUGUI>().text = $"Leaderboard: Bucket {currentBucket}";
+        }
+
+
         PlayFabLeaderboardsAPI.GetLeaderboard(
             new GetEntityLeaderboardRequest()
             {
                 EntityType = "title_player_account",
                 StatisticName = "TimeToFindPair",
-                ChildName = bucketText.text,
+                ChildName = currentBucket,
                 MaxResults = 5
             },
         (result) =>
         {
-            
 
-            for(int i =0; i < leaderboardList.transform.childCount; i++ )
+
+
+
+            if (result.Rankings != null)
             {
-                Destroy(leaderboardList.transform.GetChild(i).gameObject);                
+                foreach (EntityLeaderboardEntry ranking in result.Rankings)
+                {
+
+                    LeaderboardListEntry entry = leaderboardList.transform.Find($"Entry{ranking.Rank}").GetComponent<LeaderboardListEntry>();
+
+                    entry.Player = ranking.DisplayName;
+                    float time = ranking.Score / 1000f;
+                    entry.Time = $"{time.ToString("0.0")}s";
+                    //entry.Card.Id = int.Parse(ranking.Metadata.Substring(ranking.Metadata.IndexOf(':') + 1));
+                    entry.Card.Id = int.Parse(ranking.Metadata);
+                    entry.Card.cardImage = images[entry.Card.Id];
+                    entry.Card.gameObject.SetActive(true);
+                }
             }
 
-
-            foreach(EntityLeaderboardEntry ranking in result.Rankings)
-            {
-                LeaderboardEntryPrefab entry = Instantiate(prefabEntry,leaderboardList.transform );
-                prefabEntry.Rank = ranking.Rank;
-                prefabEntry.DisplayName = ranking.EntityLeaderboardMetadata;
-                prefabEntry.Score = ranking.Score;
-            }
-            
         },
         (error) =>
         {
@@ -291,6 +395,146 @@ public class GameLogic : MonoBehaviour
          );
     }
 
+    private async Task<EntityProfileBody> GetEntityProfileRequest()
+    {
+        var t = new TaskCompletionSource<EntityProfileBody>();
+        PlayFabProfilesAPI.GetProfile(new GetEntityProfileRequest(),
+        (response) =>
+        {
+            t.SetResult(response.Profile);
+        },
+        PlayFabErrorHandler
+
+        );
+        return t.Task.Result;
+    }
+
+    private async Task<string> AssignBucket(EntityTokenResponse entityToken, string player)
+    {
+        SetStatus($"Assigning bucket for {player}...");
+        await SetBucket(entityToken, player);
+
+        await Task.Delay(750);
+        string bucket = await UpdateBucketMetadata(entityToken);
+
+        return bucket;
+    }
+
+    private Task<bool> SetDisplayName(string name)
+    {
+        var t = new TaskCompletionSource<bool>();
+        PlayFabProfilesAPI.SetDisplayName(new SetDisplayNameRequest()
+        {
+            DisplayName = name
+        },
+             (response) =>
+             {
+                 PlayFabClientAPI.UpdateUserTitleDisplayName(new UpdateUserTitleDisplayNameRequest()
+                 {
+                     DisplayName = name
+                 },
+                     (displayNameResponse) => { t.SetResult(true); },
+                     PlayFabErrorHandler);
+             },
+            PlayFabErrorHandler
+            );
+
+        return t.Task;
+    }
+
+    private Task<bool> SetBucket(EntityTokenResponse entityToken, string metadata)
+    {
+        var t = new TaskCompletionSource<bool>();
+
+
+        PlayFabLeaderboardsAPI.UpdateStatistics(new UpdateStatisticsRequest()
+        {
+            EntityLeaderboardMetadata = metadata,
+            Statistics = new List<PlayFab.LeaderboardsModels.StatisticUpdate>() {
+                new PlayFab.LeaderboardsModels.StatisticUpdate() {
+                    Name = "Bucket",
+                    Value = 1
+                }
+            }
+        },
+        (response) => t.SetResult(true),
+        PlayFabErrorHandler);
+
+        return t.Task;
+    }
+
+    private Task<string> UpdateBucketMetadata(EntityTokenResponse entityToken)
+    {
+        var t = new TaskCompletionSource<string>();
+
+        PlayFabLeaderboardsAPI.GetLeaderboardAroundEntity(new GetLeaderboardAroundEntityRequest()
+        {
+            Entity = new PlayFab.LeaderboardsModels.EntityKey()
+            {
+                Type = entityToken.Entity.Type,
+                Id = entityToken.Entity.Id
+            },
+            StatisticName = "Bucket",
+            Offset = 0
+        },
+           (result) =>
+           {
+               int entityRank = result.Rankings[0].Rank;
+               int bucket = (entityRank-1) / 5;
+               PlayFabLeaderboardsAPI.UpdateStatistics(new UpdateStatisticsRequest()
+               {
+                   EntityLeaderboardMetadata = currentPlayer,
+                   Statistics = new List<PlayFab.LeaderboardsModels.StatisticUpdate>() {
+                    new PlayFab.LeaderboardsModels.StatisticUpdate() {
+                        Name = "Bucket",
+                        Value = 1,
+                        Metadata = bucket.ToString()
+                    }
+                   }
+               },
+               (response) => t.SetResult(bucket.ToString()),
+               PlayFabErrorHandler);
+           },
+           PlayFabErrorHandler
+           );
+
+        return t.Task;
+    }
+
+    private async Task ReportMatchResult(MatchResult result)
+    {
+
+
+        if (currentBucket == "")
+        {
+            currentBucket = await UpdateBucketMetadata(currentEntityToken);
+        }
+
+        PlayFabLeaderboardsAPI.UpdateStatistics(new UpdateStatisticsRequest()
+        {
+            Statistics = new System.Collections.Generic.List<PlayFab.LeaderboardsModels.StatisticUpdate>() {
+                    new PlayFab.LeaderboardsModels.StatisticUpdate() {
+                        Name="TimeToFindPair",
+                        ChildName = currentBucket,
+                        Value= result.matchTime,
+                        Metadata = result.cardIndex.ToString()
+                        //Metadata = $"{currentPlayer}:{result.cardIndex}"
+                    }
+                }
+        },
+        (response) =>
+        {
+
+        },
+        (error) =>
+        {
+
+            PlayFabErrorHandler(error);
+        }
+        );
+
+        return;
+    }
 
 }
 
@@ -298,7 +542,7 @@ public class GameLogic : MonoBehaviour
 
 public class MatchResult
 {
-    public float matchTime;
+    public int matchTime;
     public int cardIndex;
 
 }

@@ -22,9 +22,7 @@ namespace Company.Function
         {   
             string response = "";         
             string titleToken = await AzureFunctions.ExecuteFunction.GetTitleEntityToken();               
-            
-            
-
+              
             var deleteBucketDef = await PlayFabLeaderboardsAPI.DeleteStatisticDefinitionAsync(new DeleteStatisticDefinitionRequest() {
                 Name = "Bucket"
             });
@@ -37,7 +35,7 @@ namespace Company.Function
                 AggregationMethod = StatisticAggregationMethod.Max,
 
                 LeaderboardDefinition = new LeaderboardDefinition() {
-                    SortDirection = LeaderboardSortDirection.Ascending,
+                    SortDirection = LeaderboardSortDirection.Descending,
                     ProvisionLeaderboard = true            
                 }
             });
@@ -56,7 +54,7 @@ namespace Company.Function
                 AggregationMethod = StatisticAggregationMethod.Last,
 
                 LeaderboardDefinition = new LeaderboardDefinition() {
-                    SortDirection = LeaderboardSortDirection.Descending,
+                    SortDirection = LeaderboardSortDirection.Ascending,
                     ProvisionLeaderboard = true,
                     DynamicChildLeaderboardMaxSize = 5            
                 }
@@ -64,6 +62,8 @@ namespace Company.Function
 
         response += JsonConvert.SerializeObject(timeToFindDef.Result, Formatting.Indented);
 
+
+        
 
         return response;
         }

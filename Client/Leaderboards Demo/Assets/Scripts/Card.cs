@@ -30,6 +30,16 @@ public class Card : MonoBehaviour
         }
     }
 
+    private bool _allowsSelection = true;
+
+    [SerializeField]
+    public bool allowsSelection
+    {
+        get { return _allowsSelection;}
+        set { _allowsSelection = value;}
+    }
+      
+
     // Start is called before the first frame update
     void Start()
     {
@@ -44,11 +54,12 @@ public class Card : MonoBehaviour
 
     public void OnMouseDown()
    {
-       
+       if (allowsSelection) {
        isSelected = !isSelected;
        if (onClick != null)
        {
            onClick(this, null);
+       }
        }
    }
 

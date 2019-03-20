@@ -27,10 +27,10 @@ namespace PlayFab
             if (clientSessionTicket != null) { authKey = "X-Authorization"; authValue = clientSessionTicket; }
 #endif
 
-#if ENABLE_PLAYFABSERVER_API || ENABLE_PLAYFABADMIN_API
+//#if ENABLE_PLAYFABSERVER_API || ENABLE_PLAYFABADMIN_API
             var developerSecretKey = PlayFabSettings.staticSettings.DeveloperSecretKey;
             if (developerSecretKey != null) { authKey = "X-SecretKey"; authValue = developerSecretKey; }
-#endif
+//#endif
 
 #if !DISABLE_PLAYFABENTITY_API
             var entityToken = request?.AuthenticationContext?.EntityToken ?? PlayFabSettings.staticPlayer.EntityToken;

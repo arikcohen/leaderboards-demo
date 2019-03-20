@@ -1,0 +1,9 @@
+C:\Users\arikc\source\leaderboards-demo\PlayFabSDK\bin\Release\netstandard2.0\PlayFabAllSDK.deps.json
+C:\Users\arikc\source\leaderboards-demo\PlayFabSDK\bin\Release\netstandard2.0\PlayFabAllSDK.dll
+C:\Users\arikc\source\leaderboards-demo\PlayFabSDK\bin\Release\netstandard2.0\PlayFabAllSDK.pdb
+C:\Users\arikc\source\leaderboards-demo\PlayFabSDK\obj\Release\netstandard2.0\PlayFabSDK.csprojAssemblyReference.cache
+C:\Users\arikc\source\leaderboards-demo\PlayFabSDK\obj\Release\netstandard2.0\PlayFabSDK.csproj.CoreCompileInputs.cache
+C:\Users\arikc\source\leaderboards-demo\PlayFabSDK\obj\Release\netstandard2.0\PlayFabSDK.AssemblyInfoInputs.cache
+C:\Users\arikc\source\leaderboards-demo\PlayFabSDK\obj\Release\netstandard2.0\PlayFabSDK.AssemblyInfo.cs
+C:\Users\arikc\source\leaderboards-demo\PlayFabSDK\obj\Release\netstandard2.0\PlayFabAllSDK.dll
+C:\Users\arikc\source\leaderboards-demo\PlayFabSDK\obj\Release\netstandard2.0\PlayFabAllSDK.pdb
