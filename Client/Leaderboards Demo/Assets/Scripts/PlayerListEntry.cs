@@ -7,8 +7,8 @@ using UnityEngine.UI;
 public class PlayerListEntry : MonoBehaviour
 {
     // Start is called before the first frame update
-
-    public string Name
+    public string EntityId;
+    public string DisplayName
     {
         get
         {

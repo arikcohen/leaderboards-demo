@@ -23,6 +23,8 @@ public class LeaderboardListEntry : MonoBehaviour
         }
     }
 
+    public string EntityId;
+
     // Start is called before the first frame update
     void Start()
     {

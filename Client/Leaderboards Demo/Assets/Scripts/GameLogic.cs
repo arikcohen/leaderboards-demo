@@ -182,7 +182,7 @@ public class GameLogic : MonoBehaviour
         {
             await SetDisplayName(currentPlayer);
             currentBucket = await AssignBucket(currentEntityToken, currentPlayer);
-            AddPlayerToList(currentPlayer, currentBucket);
+            AddPlayerToList(currentPlayer, currentBucket, currentEntityToken.Entity.Id);
             
         }
         HighlightCurrentPlayer();
@@ -195,7 +195,7 @@ public class GameLogic : MonoBehaviour
         var players = playerListLocation.GetComponentsInChildren<PlayerListEntry>();
         foreach (PlayerListEntry entry in players)
         {
-            entry.IsSelected = (entry.Name == currentPlayer);
+            entry.IsSelected = (entry.DisplayName == currentPlayer);
         }
     }
 
@@ -229,7 +229,7 @@ public class GameLogic : MonoBehaviour
 
     private void PlayerSelected(object sender, EventArgs e)
     {
-        currentPlayer = ((PlayerListEntry)sender).Name;
+        currentPlayer = ((PlayerListEntry)sender).DisplayName;
         currentBucket = ((PlayerListEntry)sender).Bucket;
         PlayFabClientAPI.LoginWithCustomID(new LoginWithCustomIDRequest()
         {
@@ -289,8 +289,12 @@ public class GameLogic : MonoBehaviour
     {
         GamePanel.transform.Find("Status").GetComponent<TextMeshProUGUI>().text = message;
     }
+
+    //private bool isRefreshing = false;
     public void RefreshPlayerList()
     {
+        
+
         PlayFabLeaderboardsAPI.GetLeaderboard(
             new GetEntityLeaderboardRequest()
             {
@@ -300,17 +304,17 @@ public class GameLogic : MonoBehaviour
             },
         (result) =>
         {
-            foreach (Transform playerEntry in playerListLocation.transform)
+            foreach (PlayerListEntry playerEntry in playerListLocation.transform.GetComponentsInChildren<PlayerListEntry>())
             {
-                playerEntry.parent = null;
-                GameObject.DestroyImmediate(playerEntry.gameObject);
+                playerEntry.transform.parent = null;
+                UnityEngine.Object.DestroyImmediate(playerEntry.gameObject);
             }
 
             if (result.Rankings != null)
             {
                 foreach (EntityLeaderboardEntry ranking in result.Rankings)
                 {
-                    AddPlayerToList(ranking.DisplayName, ranking.Metadata);
+                    AddPlayerToList(ranking.DisplayName, ranking.Metadata, ranking.Entity.Id);
                 }
             }
             SetStatus("");
@@ -322,17 +326,51 @@ public class GameLogic : MonoBehaviour
          );
     }
 
-    private void AddPlayerToList(string displayName, string bucket)
+    private async Task AddPlayerToList(string displayName, string bucket, string entityId)
     {
-        Debug.Log($"Added {displayName}");
+        Debug.Log($"Added {displayName}:{entityId}");
         PlayerListEntry player = Instantiate(prefabPlayerListEntry, playerListLocation.transform);
         player.transform.SetAsFirstSibling();
-        player.Name = displayName;
+        player.DisplayName = displayName;
+        player.EntityId = entityId;
         player.Bucket = bucket == "" ? "?" : bucket;
         player.onClick += PlayerSelected;
-        player.IsSelected = player.Name == currentPlayer;
+        player.IsSelected = player.DisplayName == currentPlayer;
+
+        if (string.IsNullOrEmpty(displayName)) {
+            await GetPlayerNameFromProfile(player);
+        }
     }
 
+    private Task<bool> GetPlayerNameFromProfile(PlayerListEntry player)
+    {
+        TaskCompletionSource<bool> t = new TaskCompletionSource<bool>(); 
+        PlayFabClientAPI.ExecuteCloudScript(new ExecuteCloudScriptRequest() {
+            FunctionName = "getEntityDisplayName",
+            FunctionParameter = player.EntityId,
+            GeneratePlayStreamEvent = true
+        },
+         (response) => {            
+            var result = response.FunctionResult;
+            if (result != null) {
+                PlayFab.Json.JsonObject obj = (PlayFab.Json.JsonObject) result; 
+                object name;
+                obj.TryGetValue("Result", out name);
+                player.DisplayName = name.ToString();
+                player.IsSelected = (player.DisplayName == currentPlayer);
+                
+                //player.DisplayName = result.GetType().GetProperty("DisplayName").GetValue(result, null).ToString();
+            }
+            t.SetResult(true);
+         },
+        PlayFabErrorHandler
+        );
+        return t.Task;
+    }
+
+    private class DisplayNameFunctionResult {
+        public string Result;
+    }
     public void ReloadLeaderboardData()
     {
 
